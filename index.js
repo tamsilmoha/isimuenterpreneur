@@ -33,6 +33,21 @@ try {
     credential: admin.credential.cert(serviceAccount),
     databaseURL: "https://isimu-enterpreneur-default-rtdb.firebaseio.com"
   });
+const serviceAccount = {
+  type: "service_account",
+  project_id: "isimu-enterpreneur",
+  private_key_id: process.env.PRIVATE_KEY_ID,
+  private_key: process.env.PRIVATE_KEY.replace(/\\n/g, '\n'),
+  client_email: process.env.CLIENT_EMAIL,
+  client_id: process.env.CLIENT_ID,
+  auth_uri: "https://accounts.google.com/o/oauth2/auth",
+  token_uri: "https://oauth2.googleapis.com/token"
+};
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  databaseURL: "https://isimu-enterpreneur.firebaseio.com"
+});
 
   db = admin.database();
   firebaseStatus.initialized = true;
@@ -97,6 +112,14 @@ app.get("/produk", async (req, res) => {
 
     const produk = response.data.data;
 
+    if (!Array.isArray(produk)) {
+      console.error("Unexpected Digiflazz response structure:", JSON.stringify(response.data));
+      return res.status(502).json({
+        error: "Unexpected response from Digiflazz API: 'data' is not an array",
+        actual_response: response.data
+      });
+    }
+
     for (let item of produk) {
       await db.ref("produk/" + item.buyer_sku_code).set({
         nama: item.product_name,
@@ -109,7 +132,11 @@ app.get("/produk", async (req, res) => {
     res.json({ success: true, total: produk.length });
 
   } catch (error) {
-    res.json({ error: error.message });
+    console.error("Error in /produk:", error.message, error.response?.data);
+    res.status(500).json({
+      error: error.message,
+      digiflazz_response: error.response?.data ?? null
+    });
   }
 });
 
