@@ -23,7 +23,7 @@ const serviceAccount = {
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  databaseURL: "https://PROJECT_ID.firebaseio.com"
+  databaseURL: "https://isimu-enterpreneur.firebaseio.com"
 });
 
 const db = admin.database();
