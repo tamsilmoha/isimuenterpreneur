@@ -66,6 +66,14 @@ app.get("/produk", async (req, res) => {
 
     const produk = response.data.data;
 
+    if (!Array.isArray(produk)) {
+      console.error("Unexpected Digiflazz response structure:", JSON.stringify(response.data));
+      return res.status(502).json({
+        error: "Unexpected response from Digiflazz API: 'data' is not an array",
+        actual_response: response.data
+      });
+    }
+
     for (let item of produk) {
       await db.ref("produk/" + item.buyer_sku_code).set({
         nama: item.product_name,
@@ -78,7 +86,11 @@ app.get("/produk", async (req, res) => {
     res.json({ success: true, total: produk.length });
 
   } catch (error) {
-    res.json({ error: error.message });
+    console.error("Error in /produk:", error.message, error.response?.data);
+    res.status(500).json({
+      error: error.message,
+      digiflazz_response: error.response?.data ?? null
+    });
   }
 });
 
