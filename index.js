@@ -10,23 +10,50 @@ app.use(express.json());
 // ==========================
 // 🔥 FIREBASE INIT
 // ==========================
-const serviceAccount = {
-  type: "service_account",
-  project_id: "isimu-enterpreneur",
-  private_key_id: process.env.PRIVATE_KEY_ID,
-  private_key: process.env.PRIVATE_KEY.replace(/\\n/g, '\n'),
-  client_email: process.env.CLIENT_EMAIL,
-  client_id: process.env.CLIENT_ID,
-  auth_uri: "https://accounts.google.com/o/oauth2/auth",
-  token_uri: "https://oauth2.googleapis.com/token"
-};
+let db = null;
+let firebaseStatus = { initialized: false, error: null };
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  databaseURL: "https://PROJECT_ID.firebaseio.com"
+try {
+  if (!process.env.PRIVATE_KEY) {
+    throw new Error("PRIVATE_KEY environment variable is not set");
+  }
+
+  const serviceAccount = {
+    type: "service_account",
+    project_id: "isimu-enterpreneur",
+    private_key_id: process.env.PRIVATE_KEY_ID,
+    private_key: process.env.PRIVATE_KEY.replace(/\\n/g, '\n'),
+    client_email: process.env.CLIENT_EMAIL,
+    client_id: process.env.CLIENT_ID,
+    auth_uri: "https://accounts.google.com/o/oauth2/auth",
+    token_uri: "https://oauth2.googleapis.com/token"
+  };
+
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    databaseURL: "https://isimu-enterpreneur-default-rtdb.firebaseio.com"
+  });
+
+  db = admin.database();
+  firebaseStatus.initialized = true;
+  console.log("🔥 Firebase initialized successfully");
+} catch (err) {
+  firebaseStatus.error = err.message;
+  console.error("❌ Firebase initialization failed:", err.message);
+}
+
+// ==========================
+// 🩺 HEALTH CHECK
+// ==========================
+app.get("/health", (req, res) => {
+  res.status(firebaseStatus.initialized ? 200 : 503).json({
+    status: firebaseStatus.initialized ? "ok" : "degraded",
+    firebase: {
+      initialized: firebaseStatus.initialized,
+      error: firebaseStatus.error || null
+    }
+  });
 });
-
-const db = admin.database();
 
 // ==========================
 // 🔑 SIGN DIGIFLAZZ
@@ -49,6 +76,7 @@ app.get("/", (req, res) => {
 // 📦 AMBIL & SIMPAN PRODUK
 // ==========================
 app.get("/produk", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Firebase tidak tersedia", detail: firebaseStatus.error });
   try {
     const sign = crypto
       .createHash("md5")
@@ -86,6 +114,7 @@ app.get("/produk", async (req, res) => {
 // 💰 BELI PRODUK
 // ==========================
 app.get("/beli", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Firebase tidak tersedia", detail: firebaseStatus.error });
   const { produk, tujuan, user_id } = req.query;
 
   if (!produk || !tujuan || !user_id) {
@@ -175,6 +204,7 @@ app.get("/beli", async (req, res) => {
 // 🔍 CEK STATUS
 // ==========================
 app.get("/cek", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Firebase tidak tersedia", detail: firebaseStatus.error });
   const { ref_id } = req.query;
 
   if (!ref_id) return res.json({ error: "ref_id wajib" });
@@ -214,6 +244,7 @@ app.get("/cek", async (req, res) => {
 // 🔔 CALLBACK DIGIFLAZZ
 // ==========================
 app.post("/callback", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Firebase tidak tersedia", detail: firebaseStatus.error });
   try {
     const data = req.body;
 
@@ -251,11 +282,14 @@ app.get("/ip", (req, res) => {
 
   res.json({ ip });
 });
+
 //==============tes firebash
 app.get("/test-firebase", async (req, res) => {
-  await db.ref("test").set({
-    nama: "test berhasil"
-  });
-
-  res.send("OK");
+  if (!db) return res.status(503).json({ error: "Firebase tidak tersedia", detail: firebaseStatus.error });
+  try {
+    await db.ref("test").set({ nama: "test berhasil" });
+    res.send("OK");
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
