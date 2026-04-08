@@ -75,6 +75,9 @@ app.get("/", (req, res) => {
 // ==========================
 // 📦 AMBIL & SIMPAN PRODUK
 // ==========================
+// ==========================
+// 📦 AMBIL & SIMPAN PRODUK
+// ==========================
 app.get("/produk", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Firebase tidak tersedia", detail: firebaseStatus.error });
   try {
@@ -92,7 +95,21 @@ app.get("/produk", async (req, res) => {
       }
     );
 
+    // 🔍 DEBUG: Log the full response
+    console.log("Digiflazz response:", JSON.stringify(response.data, null, 2));
+
     const produk = response.data.data;
+
+    // ✅ Validate that produk is an array
+    if (!Array.isArray(produk)) {
+      console.error("ERROR: produk is not an array. Type:", typeof produk);
+      console.error("Full response:", JSON.stringify(response.data, null, 2));
+      return res.status(400).json({
+        error: "Unexpected Digiflazz response - data is not an array",
+        received_type: typeof produk,
+        received_data: produk
+      });
+    }
 
     for (let item of produk) {
       await db.ref("produk/" + item.buyer_sku_code).set({
@@ -106,7 +123,11 @@ app.get("/produk", async (req, res) => {
     res.json({ success: true, total: produk.length });
 
   } catch (error) {
-    res.json({ error: error.message });
+    console.error("Error in /produk:", error.message);
+    res.status(500).json({
+      error: error.message,
+      digiflazz_response: error.response?.data ?? null
+    });
   }
 });
 
