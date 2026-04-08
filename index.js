@@ -92,7 +92,21 @@ app.get("/produk", async (req, res) => {
       }
     );
 
-    const produk = response.data.data;
+    const raw = response.data.data;
+
+    // Log the actual structure returned by Digiflazz for debugging
+    console.log("📦 Digiflazz response.data.data type:", typeof raw, Array.isArray(raw) ? "(array)" : "(non-array)");
+    console.log("📦 Digiflazz response.data.data sample:", JSON.stringify(raw)?.slice(0, 300));
+
+    // Normalise to array: Digiflazz may return an array or an object keyed by SKU
+    let produk;
+    if (Array.isArray(raw)) {
+      produk = raw;
+    } else if (raw && typeof raw === "object") {
+      produk = Object.values(raw);
+    } else {
+      throw new Error("Format response Digiflazz tidak dikenali: " + typeof raw);
+    }
 
     for (let item of produk) {
       await db.ref("produk/" + item.buyer_sku_code).set({
