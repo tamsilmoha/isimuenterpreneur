@@ -96,7 +96,6 @@ app.get("/produk", async (req, res) => {
 
     // Log the actual structure returned by Digiflazz for debugging
     console.log("📦 Digiflazz response.data.data type:", typeof raw, Array.isArray(raw) ? "(array)" : "(non-array)");
-    console.log("📦 Digiflazz response.data.data sample:", JSON.stringify(raw)?.slice(0, 300));
 
     // Normalise to array: Digiflazz may return an array or an object keyed by SKU
     let produk;
@@ -108,16 +107,38 @@ app.get("/produk", async (req, res) => {
       throw new Error("Format response Digiflazz tidak dikenali: " + typeof raw);
     }
 
-    for (let item of produk) {
-      await db.ref("produk/" + item.buyer_sku_code).set({
-        nama: item.product_name,
-        harga: item.price,
-        kategori: item.category,
-        status: item.buyer_product_status
-      });
+    // Log the first item's full structure so we can verify the exact field names
+    if (produk.length > 0) {
+      console.log("📦 Digiflazz first item keys:", Object.keys(produk[0]));
+      console.log("📦 Digiflazz first item full:", JSON.stringify(produk[0]));
     }
 
-    res.json({ success: true, total: produk.length });
+    let saved = 0;
+    let skipped = 0;
+
+    for (let item of produk) {
+      // Digiflazz price-list uses buyer_sku_code; fall back to sku_code for
+      // any API variant that omits the buyer_ prefix
+      const sku = item.buyer_sku_code || item.sku_code;
+
+      if (!sku) {
+        console.warn("⚠️  Skipping item with no SKU field:", JSON.stringify(item));
+        skipped++;
+        continue;
+      }
+
+      await db.ref("produk/" + sku).set({
+        nama: item.product_name || item.name || "",
+        harga: item.price || 0,
+        kategori: item.category || "",
+        status: item.buyer_product_status ?? item.product_status ?? false
+      });
+
+      saved++;
+    }
+
+    console.log(`✅ Produk saved: ${saved}, skipped: ${skipped}`);
+    res.json({ success: true, total: produk.length, saved, skipped });
 
   } catch (error) {
     res.json({ error: error.message });
