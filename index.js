@@ -263,6 +263,51 @@ app.get("/cek", async (req, res) => {
   }
 });
 
+setInterval(async () => {
+  try {
+    if (!db) return;
+
+    const snap = await db.ref("transaksi").once("value");
+
+    snap.forEach(async (child) => {
+      const trx = child.val();
+      const ref_id = child.key;
+
+      if (trx.status === "Pending") {
+
+        const sign = createSign(
+          process.env.DIGI_USERNAME,
+          process.env.DIGI_API_KEY,
+          ref_id
+        );
+
+        const response = await axios.post(
+          "https://api.digiflazz.com/v1/transaction",
+          {
+            username: process.env.DIGI_USERNAME,
+            ref_id,
+            sign
+          }
+        );
+
+        const data = response.data.data;
+
+        await db.ref("transaksi/" + ref_id).update({
+          status: data.status,
+          sn: data.sn || ""
+        });
+
+        // 🔥 refund otomatis
+        if (data.status === "Gagal") {
+          await db.ref("users/" + trx.user_id + "/saldo")
+            .transaction(saldo => saldo + trx.harga);
+        }
+      }
+    });
+
+  } catch (err) {}
+}, 10000); // tiap 10 detik
+
 /* =========================
    START SERVER
 ========================= */
