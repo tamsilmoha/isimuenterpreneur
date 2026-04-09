@@ -143,8 +143,16 @@ app.get("/beli", async (req, res) => {
     if (!user) return res.json({ error: "User tidak ditemukan" });
 
     // 🔥 ambil harga produk
-    const produkSnap = await db.ref("produk/" + produk).once("value");
-    const produkData = produkSnap.val();
+    app.get("/beli", async (req, res) => {
+  try {
+    if (!db) return res.json({ error: "Firebase belum connect" });
+
+    const { produk, tujuan, user_id } = req.query;
+
+    if (!produk || !tujuan || !user_id) {
+      return res.json({ error: "produk, tujuan, user_id wajib" });
+    }
+
 
     if (!produkData) return res.json({ error: "Produk tidak ditemukan" });
 
@@ -233,7 +241,24 @@ app.get("/cek", async (req, res) => {
       }
     );
 
-    res.json(response.data);
+    const data = response.data.data;
+
+    // 🔥 UPDATE FIREBASE
+    await db.ref("transaksi/" + ref_id).update({
+      status: data.status,
+      sn: data.sn || ""
+    });
+
+    // 🔥 REFUND JIKA GAGAL
+    if (data.status === "Gagal") {
+      const trxSnap = await db.ref("transaksi/" + ref_id).once("value");
+      const trx = trxSnap.val();
+
+      await db.ref("users/" + trx.user_id + "/saldo")
+        .transaction(saldo => saldo + trx.harga);
+    }
+
+    res.json(data);
 
   } catch (error) {
     res.json({
