@@ -35,12 +35,9 @@ try {
     });
 
     db = admin.database();
-    console.log("🔥 Firebase CONNECTED");
-  } else {
-    console.log("❌ Firebase ENV belum lengkap");
-  }
+} else {
+}
 } catch (error) {
-  console.log("❌ Firebase init gagal");
 }
 
 /* =========================
@@ -312,6 +309,4 @@ setInterval(async () => {
 /* =========================
    START SERVER
 ========================= */
-app.listen(process.env.PORT || 3000, () => {
-  console.log("🚀 Server jalan 🔥");
-});
+app.listen(process.env.PORT || 3000);
