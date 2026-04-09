@@ -7,22 +7,19 @@ const admin = require("firebase-admin");
 const app = express();
 app.use(express.json());
 
-// ==========================
-// 🔥 FIREBASE INIT
-// ==========================
-let db = null;
-let firebaseStatus = { initialized: false, error: null };
+/* =========================
+   🔥 FIREBASE INIT (ANTI CRASH)
+========================= */
+let db;
 
 try {
-  if (!process.env.PRIVATE_KEY) {
-    throw new Error("PRIVATE_KEY environment variable is not set");
-  }
-
   const serviceAccount = {
     type: "service_account",
     project_id: "isimu-enterpreneur",
     private_key_id: process.env.PRIVATE_KEY_ID,
-    private_key: process.env.PRIVATE_KEY.replace(/\\n/g, '\n'),
+    private_key: process.env.PRIVATE_KEY
+      ? process.env.PRIVATE_KEY.replace(/\\n/g, "\n")
+      : "",
     client_email: process.env.CLIENT_EMAIL,
     client_id: process.env.CLIENT_ID,
     auth_uri: "https://accounts.google.com/o/oauth2/auth",
@@ -31,33 +28,44 @@ try {
 
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
-    databaseURL: "https://isimu-enterpreneur-default-rtdb.firebaseio.com"
+    databaseURL: "https://isimu-enterpreneur.firebaseio.com"
   });
 
   db = admin.database();
-  firebaseStatus.initialized = true;
-  console.log("🔥 Firebase initialized successfully");
-} catch (err) {
-  firebaseStatus.error = err.message;
-  console.error("❌ Firebase initialization failed:", err.message);
+  console.log("🔥 Firebase CONNECTED");
+
+} catch (error) {
+  console.log("❌ Firebase ERROR:", error.message);
 }
 
-// ==========================
-// 🩺 HEALTH CHECK
-// ==========================
-app.get("/health", (req, res) => {
-  res.status(firebaseStatus.initialized ? 200 : 503).json({
-    status: firebaseStatus.initialized ? "ok" : "degraded",
-    firebase: {
-      initialized: firebaseStatus.initialized,
-      error: firebaseStatus.error || null
-    }
-  });
+/* =========================
+   ROOT
+========================= */
+app.get("/", (req, res) => {
+  res.send("API JUAL PULSA READY 🔥");
 });
 
-// ==========================
-// 🔑 SIGN DIGIFLAZZ
-// ==========================
+/* =========================
+   🔥 TEST FIREBASE
+========================= */
+app.get("/test-firebase", async (req, res) => {
+  try {
+    if (!db) return res.send("Firebase belum connect");
+
+    await db.ref("test").set({
+      nama: "test berhasil"
+    });
+
+    res.send("OK");
+
+  } catch (err) {
+    res.send("ERROR: " + err.message);
+  }
+});
+
+/* =========================
+   SIGN DIGIFLAZZ
+========================= */
 function createSign(username, apiKey, refId) {
   return crypto
     .createHash("md5")
@@ -65,22 +73,13 @@ function createSign(username, apiKey, refId) {
     .digest("hex");
 }
 
-// ==========================
-// ROOT
-// ==========================
-app.get("/", (req, res) => {
-  res.send("API JUAL PULSA READY 🔥");
-});
-
-// ==========================
-// 📦 AMBIL & SIMPAN PRODUK
-// ==========================
-// ==========================
-// 📦 AMBIL & SIMPAN PRODUK
-// ==========================
+/* =========================
+   📦 AMBIL PRODUK DIGIFLAZZ
+========================= */
 app.get("/produk", async (req, res) => {
-  if (!db) return res.status(503).json({ error: "Firebase tidak tersedia", detail: firebaseStatus.error });
   try {
+    if (!db) return res.json({ error: "Firebase belum connect" });
+
     const sign = crypto
       .createHash("md5")
       .update(process.env.DIGI_USERNAME + process.env.DIGI_API_KEY + "pricelist")
@@ -95,78 +94,45 @@ app.get("/produk", async (req, res) => {
       }
     );
 
-    // 🔍 DEBUG: Log the full response
-    console.log("Digiflazz response:", JSON.stringify(response.data, null, 2));
-
     const produk = response.data.data;
 
-    // ✅ Validate that produk is an array
-    if (!Array.isArray(produk)) {
-      console.error("ERROR: produk is not an array. Type:", typeof produk);
-      console.error("Full response:", JSON.stringify(response.data, null, 2));
-      return res.status(400).json({
-        error: "Unexpected Digiflazz response - data is not an array",
-        received_type: typeof produk,
-        received_data: produk
-      });
-    }
+    let total = 0;
 
     for (let item of produk) {
+      if (!item.buyer_sku_code || !item.product_name) continue;
+
       await db.ref("produk/" + item.buyer_sku_code).set({
-        nama: item.product_name,
-        harga: item.price,
-        kategori: item.category,
-        status: item.buyer_product_status
+        nama: item.product_name || "",
+        harga: item.price || 0,
+        kategori: item.category || "",
+        status: item.buyer_product_status || false
       });
+
+      total++;
     }
 
-    res.json({ success: true, total: produk.length });
+    res.json({ success: true, total });
 
   } catch (error) {
-    console.error("Error in /produk:", error.message);
-    res.status(500).json({
-      error: error.message,
-      digiflazz_response: error.response?.data ?? null
-    });
+    res.json({ error: error.message });
   }
 });
 
-// ==========================
-// 💰 BELI PRODUK
-// ==========================
+/* =========================
+   🔥 BELI PRODUK
+========================= */
 app.get("/beli", async (req, res) => {
-  if (!db) return res.status(503).json({ error: "Firebase tidak tersedia", detail: firebaseStatus.error });
-  const { produk, tujuan, user_id } = req.query;
-
-  if (!produk || !tujuan || !user_id) {
-    return res.json({ error: "produk, tujuan, user_id wajib" });
-  }
-
-  const refId = "TRX-" + Date.now();
-
   try {
-    // 🔹 ambil user
-    const userSnap = await db.ref("users/" + user_id).once("value");
-    const user = userSnap.val();
+    if (!db) return res.json({ error: "Firebase belum connect" });
 
-    if (!user) return res.json({ error: "User tidak ditemukan" });
+    const { produk, tujuan, user_id } = req.query;
 
-    // 🔹 ambil produk
-    const produkSnap = await db.ref("produk/" + produk).once("value");
-    const produkData = produkSnap.val();
-
-    if (!produkData) return res.json({ error: "Produk tidak ditemukan" });
-
-    // 🔹 cek saldo
-    if (user.saldo < produkData.harga) {
-      return res.json({ error: "Saldo tidak cukup" });
+    if (!produk || !tujuan || !user_id) {
+      return res.json({ error: "produk, tujuan, user_id wajib" });
     }
 
-    // 🔹 potong saldo
-    const sisaSaldo = user.saldo - produkData.harga;
-    await db.ref("users/" + user_id + "/saldo").set(sisaSaldo);
+    const refId = "TRX-" + Date.now();
 
-    // 🔹 sign digiflazz
     const sign = createSign(
       process.env.DIGI_USERNAME,
       process.env.DIGI_API_KEY,
@@ -184,53 +150,35 @@ app.get("/beli", async (req, res) => {
       }
     );
 
-    const result = response.data.data;
-
-    // 🔹 simpan transaksi
+    // simpan ke firebase
     await db.ref("transaksi/" + refId).set({
       user_id,
       produk,
       tujuan,
-      harga: produkData.harga,
-      status: result.status,
-      sn: result.sn || "",
-      response: JSON.stringify(result),
+      response: response.data,
       created_at: Date.now()
     });
 
-    // 🔹 index transaksi user
-    await db.ref("user_transaksi/" + user_id + "/" + refId).set(true);
-
-    // 🔹 simpan mutasi
-    await db.ref("mutasi/" + refId).set({
-      user_id,
-      tipe: "debit",
-      nominal: produkData.harga,
-      keterangan: "Pembelian " + produk,
-      created_at: Date.now()
-    });
-
-    res.json({
-      success: true,
-      data: result,
-      saldo_sisa: sisaSaldo
-    });
+    res.json(response.data);
 
   } catch (error) {
-    res.json({ error: error.message });
+    res.json({
+      error: error.response?.data || error.message
+    });
   }
 });
 
-// ==========================
-// 🔍 CEK STATUS
-// ==========================
+/* =========================
+   🔍 CEK STATUS
+========================= */
 app.get("/cek", async (req, res) => {
-  if (!db) return res.status(503).json({ error: "Firebase tidak tersedia", detail: firebaseStatus.error });
-  const { ref_id } = req.query;
-
-  if (!ref_id) return res.json({ error: "ref_id wajib" });
-
   try {
+    const { ref_id } = req.query;
+
+    if (!ref_id) {
+      return res.json({ error: "ref_id wajib" });
+    }
+
     const sign = createSign(
       process.env.DIGI_USERNAME,
       process.env.DIGI_API_KEY,
@@ -241,76 +189,23 @@ app.get("/cek", async (req, res) => {
       "https://api.digiflazz.com/v1/transaction",
       {
         username: process.env.DIGI_USERNAME,
-        ref_id: ref_id,
-        sign: sign
+        ref_id,
+        sign
       }
     );
 
-    const result = response.data.data;
-
-    // update status di firebase
-    await db.ref("transaksi/" + ref_id).update({
-      status: result.status,
-      sn: result.sn || ""
-    });
-
-    res.json(result);
+    res.json(response.data);
 
   } catch (error) {
-    res.json({ error: error.message });
+    res.json({
+      error: error.response?.data || error.message
+    });
   }
 });
 
-// ==========================
-// 🔔 CALLBACK DIGIFLAZZ
-// ==========================
-app.post("/callback", async (req, res) => {
-  if (!db) return res.status(503).json({ error: "Firebase tidak tersedia", detail: firebaseStatus.error });
-  try {
-    const data = req.body;
-
-    const refId = data.ref_id;
-
-    // simpan log
-    await db.ref("log_callback/" + refId).set({
-      data: JSON.stringify(data),
-      created_at: Date.now()
-    });
-
-    // update transaksi
-    await db.ref("transaksi/" + refId).update({
-      status: data.status,
-      sn: data.sn || ""
-    });
-
-    res.json({ success: true });
-
-  } catch (error) {
-    res.json({ error: error.message });
-  }
-});
-
-// ==========================
+/* =========================
+   START SERVER
+========================= */
 app.listen(process.env.PORT || 3000, () => {
-  console.log("🚀 Server jalan di port 3000");
-});
-
-// ==========================cek ip
-app.get("/ip", (req, res) => {
-  const ip =
-    req.headers["x-forwarded-for"] ||
-    req.socket.remoteAddress;
-
-  res.json({ ip });
-});
-
-//==============tes firebash
-app.get("/test-firebase", async (req, res) => {
-  if (!db) return res.status(503).json({ error: "Firebase tidak tersedia", detail: firebaseStatus.error });
-  try {
-    await db.ref("test").set({ nama: "test berhasil" });
-    res.send("OK");
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  console.log("🚀 Server jalan 🔥");
 });
