@@ -8,18 +8,16 @@ const app = express();
 app.use(express.json());
 
 /* =========================
-   🔥 FIREBASE INIT (ANTI CRASH)
+   FIREBASE INIT (SAFE)
 ========================= */
 let db = null;
 
 try {
   if (
-    !process.env.PRIVATE_KEY ||
-    !process.env.CLIENT_EMAIL ||
-    !process.env.CLIENT_ID
+    process.env.PRIVATE_KEY &&
+    process.env.CLIENT_EMAIL &&
+    process.env.CLIENT_ID
   ) {
-    console.log("❌ ENV Firebase belum lengkap");
-  } else {
     const serviceAccount = {
       type: "service_account",
       project_id: "isimu-enterpreneur",
@@ -33,16 +31,18 @@ try {
 
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
-      databaseURL: "https://isimu-enterpreneur-default-rtdb.asia-southeast1.firebasedatabase.app/"
+      databaseURL: "https://isimu-enterpreneur-default-rtdb.asia-southeast1.firebasedatabase.app"
     });
 
     db = admin.database();
     console.log("🔥 Firebase CONNECTED");
+  } else {
+    console.log("❌ Firebase ENV belum lengkap");
   }
-
 } catch (error) {
   console.log("❌ Firebase init gagal");
 }
+
 /* =========================
    ROOT
 ========================= */
@@ -51,7 +51,7 @@ app.get("/", (req, res) => {
 });
 
 /* =========================
-   🔥 TEST FIREBASE
+   TEST FIREBASE
 ========================= */
 app.get("/test-firebase", async (req, res) => {
   try {
@@ -62,7 +62,6 @@ app.get("/test-firebase", async (req, res) => {
     });
 
     res.send("OK");
-
   } catch (err) {
     res.send("ERROR: " + err.message);
   }
@@ -71,15 +70,15 @@ app.get("/test-firebase", async (req, res) => {
 /* =========================
    SIGN DIGIFLAZZ
 ========================= */
-function createSign(username, apiKey, refId) {
+function createSign(username, apiKey, ref_id) {
   return crypto
     .createHash("md5")
-    .update(username + apiKey + refId)
+    .update(username + apiKey + ref_id)
     .digest("hex");
 }
 
 /* =========================
-   📦 AMBIL PRODUK DIGIFLAZZ
+   PRODUK DIGIFLAZZ → FIREBASE
 ========================= */
 app.get("/produk", async (req, res) => {
   try {
@@ -99,6 +98,13 @@ app.get("/produk", async (req, res) => {
       }
     );
 
+    if (!Array.isArray(response.data.data)) {
+      return res.json({
+        error: "Digiflazz error",
+        message: response.data.message
+      });
+    }
+
     const produk = response.data.data;
 
     let total = 0;
@@ -117,14 +123,13 @@ app.get("/produk", async (req, res) => {
     }
 
     res.json({ success: true, total });
-
   } catch (error) {
     res.json({ error: error.message });
   }
 });
 
 /* =========================
-   🔥 BELI PRODUK
+   BELI PRODUK (SERVER SIDE)
 ========================= */
 app.get("/beli", async (req, res) => {
   try {
@@ -136,44 +141,41 @@ app.get("/beli", async (req, res) => {
       return res.json({ error: "produk, tujuan, user_id wajib" });
     }
 
-    // 🔥 ambil data user
     const userSnap = await db.ref("users/" + user_id).once("value");
     const user = userSnap.val();
 
     if (!user) return res.json({ error: "User tidak ditemukan" });
 
-    // 🔥 ambil harga produk
-    app.get("/beli", async (req, res) => {
-  try {
-    if (!db) return res.json({ error: "Firebase belum connect" });
+    const produkSnap = await db.ref("produk").once("value");
 
-    const { produk, tujuan, user_id } = req.query;
+    let produkData = null;
 
-    if (!produk || !tujuan || !user_id) {
-      return res.json({ error: "produk, tujuan, user_id wajib" });
+    produkSnap.forEach(child => {
+      if (child.key.toLowerCase() === produk.toLowerCase()) {
+        produkData = child.val();
+      }
+    });
+
+    if (!produkData) {
+      return res.json({ error: "Produk tidak ditemukan" });
     }
-
-
-    if (!produkData) return res.json({ error: "Produk tidak ditemukan" });
 
     const harga = produkData.harga;
 
-    // 🔥 cek saldo
     if (user.saldo < harga) {
       return res.json({ error: "Saldo tidak cukup" });
     }
 
-    const refId = "TRX-" + Date.now();
+    const ref_id = "TRX-" + Date.now();
 
-    // 🔥 potong saldo
     await db.ref("users/" + user_id + "/saldo")
       .set(user.saldo - harga);
 
-    // 🔥 kirim ke Digiflazz
-    const sign = crypto
-      .createHash("md5")
-      .update(process.env.DIGI_USERNAME + process.env.DIGI_API_KEY + refId)
-      .digest("hex");
+    const sign = createSign(
+      process.env.DIGI_USERNAME,
+      process.env.DIGI_API_KEY,
+      ref_id
+    );
 
     const response = await axios.post(
       "https://api.digiflazz.com/v1/transaction",
@@ -181,13 +183,12 @@ app.get("/beli", async (req, res) => {
         username: process.env.DIGI_USERNAME,
         buyer_sku_code: produk,
         customer_no: tujuan,
-        ref_id: refId,
+        ref_id: ref_id,
         sign: sign
       }
     );
 
-    // 🔥 simpan transaksi
-    await db.ref("transaksi/" + refId).set({
+    await db.ref("transaksi/" + ref_id).set({
       user_id,
       produk,
       tujuan,
@@ -197,8 +198,7 @@ app.get("/beli", async (req, res) => {
       created_at: Date.now()
     });
 
-    // 🔥 simpan mutasi
-    await db.ref("mutasi/" + refId).set({
+    await db.ref("mutasi/" + ref_id).set({
       user_id,
       tipe: "debit",
       nominal: harga,
@@ -207,7 +207,6 @@ app.get("/beli", async (req, res) => {
     });
 
     res.json(response.data);
-
   } catch (error) {
     res.json({
       error: error.response?.data || error.message
@@ -216,11 +215,11 @@ app.get("/beli", async (req, res) => {
 });
 
 /* =========================
-   🔍 CEK STATUS
+   CEK STATUS + UPDATE
 ========================= */
 app.get("/cek", async (req, res) => {
   try {
-    const { ref_id } = req.query;
+    const ref_id = req.query.ref_id;
 
     if (!ref_id) {
       return res.json({ error: "ref_id wajib" });
@@ -257,31 +256,6 @@ app.get("/cek", async (req, res) => {
     }
 
     res.json(data);
-
-  } catch (error) {
-    res.json({
-      error: error.response?.data || error.message
-    });
-  }
-});
-
-    // 🔥 UPDATE FIREBASE
-    await db.ref("transaksi/" + ref_id).update({
-      status: data.status,
-      sn: data.sn || ""
-    });
-
-    // 🔥 REFUND JIKA GAGAL
-    if (data.status === "Gagal") {
-      const trxSnap = await db.ref("transaksi/" + ref_id).once("value");
-      const trx = trxSnap.val();
-
-      await db.ref("users/" + trx.user_id + "/saldo")
-        .transaction(saldo => saldo + trx.harga);
-    }
-
-    res.json(data);
-
   } catch (error) {
     res.json({
       error: error.response?.data || error.message
