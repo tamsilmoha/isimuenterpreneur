@@ -107,12 +107,25 @@ app.get("/produk", async (req, res) => {
     let total = 0;
 
     for (let item of produk) {
-      if (!item.buyer_sku_code || !item.product_name) continue;
+
+  if (!item.buyer_sku_code || !item.product_name) continue;
+
+  const modal = Number(item.price) || 0;
+
+  let markup = 0;
+
+if (modal < 15000) {
+  markup = 511;
+} else if (modal < 50000) {
+  markup = 1011;
+} else {
+  markup = 1511;
+}
 
       await db.ref("produk/" + item.buyer_sku_code).set({
         nama: item.product_name || "",
-        harga: Number(item.price) || 0,
-        harga_modal: Number(item.price) || 0,
+        harga: modal + markup, // 🔥 harga jual
+        harga_modal: modal,    // 🔥 modal asli
         kategori: item.category || "",
         status: item.buyer_product_status || false
       });
