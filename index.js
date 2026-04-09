@@ -243,6 +243,28 @@ app.get("/cek", async (req, res) => {
 
     const data = response.data.data;
 
+    await db.ref("transaksi/" + ref_id).update({
+      status: data.status,
+      sn: data.sn || ""
+    });
+
+    if (data.status === "Gagal") {
+      const trxSnap = await db.ref("transaksi/" + ref_id).once("value");
+      const trx = trxSnap.val();
+
+      await db.ref("users/" + trx.user_id + "/saldo")
+        .transaction(saldo => saldo + trx.harga);
+    }
+
+    res.json(data);
+
+  } catch (error) {
+    res.json({
+      error: error.response?.data || error.message
+    });
+  }
+});
+
     // 🔥 UPDATE FIREBASE
     await db.ref("transaksi/" + ref_id).update({
       status: data.status,
