@@ -136,13 +136,36 @@ app.get("/beli", async (req, res) => {
       return res.json({ error: "produk, tujuan, user_id wajib" });
     }
 
+    // 🔥 ambil data user
+    const userSnap = await db.ref("users/" + user_id).once("value");
+    const user = userSnap.val();
+
+    if (!user) return res.json({ error: "User tidak ditemukan" });
+
+    // 🔥 ambil harga produk
+    const produkSnap = await db.ref("produk/" + produk).once("value");
+    const produkData = produkSnap.val();
+
+    if (!produkData) return res.json({ error: "Produk tidak ditemukan" });
+
+    const harga = produkData.harga;
+
+    // 🔥 cek saldo
+    if (user.saldo < harga) {
+      return res.json({ error: "Saldo tidak cukup" });
+    }
+
     const refId = "TRX-" + Date.now();
 
-    const sign = createSign(
-      process.env.DIGI_USERNAME,
-      process.env.DIGI_API_KEY,
-      refId
-    );
+    // 🔥 potong saldo
+    await db.ref("users/" + user_id + "/saldo")
+      .set(user.saldo - harga);
+
+    // 🔥 kirim ke Digiflazz
+    const sign = crypto
+      .createHash("md5")
+      .update(process.env.DIGI_USERNAME + process.env.DIGI_API_KEY + refId)
+      .digest("hex");
 
     const response = await axios.post(
       "https://api.digiflazz.com/v1/transaction",
@@ -155,12 +178,23 @@ app.get("/beli", async (req, res) => {
       }
     );
 
-    // simpan ke firebase
+    // 🔥 simpan transaksi
     await db.ref("transaksi/" + refId).set({
       user_id,
       produk,
       tujuan,
+      harga,
+      status: response.data.data?.status || "Pending",
       response: response.data,
+      created_at: Date.now()
+    });
+
+    // 🔥 simpan mutasi
+    await db.ref("mutasi/" + refId).set({
+      user_id,
+      tipe: "debit",
+      nominal: harga,
+      keterangan: "Beli " + produk,
       created_at: Date.now()
     });
 
