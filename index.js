@@ -10,34 +10,39 @@ app.use(express.json());
 /* =========================
    🔥 FIREBASE INIT (ANTI CRASH)
 ========================= */
-let db;
+let db = null;
 
 try {
-  const serviceAccount = {
-    type: "service_account",
-    project_id: "isimu-enterpreneur",
-    private_key_id: process.env.PRIVATE_KEY_ID,
-    private_key: process.env.PRIVATE_KEY
-      ? process.env.PRIVATE_KEY.replace(/\\n/g, "\n")
-      : "",
-    client_email: process.env.CLIENT_EMAIL,
-    client_id: process.env.CLIENT_ID,
-    auth_uri: "https://accounts.google.com/o/oauth2/auth",
-    token_uri: "https://oauth2.googleapis.com/token"
-  };
+  if (
+    !process.env.PRIVATE_KEY ||
+    !process.env.CLIENT_EMAIL ||
+    !process.env.CLIENT_ID
+  ) {
+    console.log("❌ ENV Firebase belum lengkap");
+  } else {
+    const serviceAccount = {
+      type: "service_account",
+      project_id: "isimu-enterpreneur",
+      private_key_id: process.env.PRIVATE_KEY_ID,
+      private_key: process.env.PRIVATE_KEY.replace(/\\n/g, "\n"),
+      client_email: process.env.CLIENT_EMAIL,
+      client_id: process.env.CLIENT_ID,
+      auth_uri: "https://accounts.google.com/o/oauth2/auth",
+      token_uri: "https://oauth2.googleapis.com/token"
+    };
 
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    databaseURL: "https://isimu-enterpreneur.firebaseio.com"
-  });
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+      databaseURL: "https://isimu-enterpreneur-default-rtdb.asia-southeast1.firebasedatabase.app/"
+    });
 
-  db = admin.database();
-  console.log("🔥 Firebase CONNECTED");
+    db = admin.database();
+    console.log("🔥 Firebase CONNECTED");
+  }
 
 } catch (error) {
-  console.log("❌ Firebase ERROR:", error.message);
+  console.log("❌ Firebase init gagal");
 }
-
 /* =========================
    ROOT
 ========================= */
