@@ -114,7 +114,8 @@ app.get("/produk", async (req, res) => {
 
       await db.ref("produk/" + item.buyer_sku_code).set({
         nama: item.product_name || "",
-        harga: Number(item.price) || Number(item.selling_price) || Number(item.buyer_price) || 0,
+        harga: Number(item.price) || 0,
+        harga_modal: Number(item.price) || 0,
         kategori: item.category || "",
         status: item.buyer_product_status || false
       });
