@@ -115,11 +115,11 @@ app.get("/produk", async (req, res) => {
   let markup = 0;
 
 if (modal < 15000) {
-  markup = 511;
+  markup = 111;
 } else if (modal < 50000) {
-  markup = 1011;
+  markup = 211;
 } else {
-  markup = 1511;
+  markup = 311;
 }
 
       await db.ref("produk/" + item.buyer_sku_code).set({
@@ -361,9 +361,6 @@ app.post("/deposit", async (req, res) => {
       return res.json({ error: "amount, bank, owner_name wajib" });
         
     }
-    if (amount < 200000) {
-      return res.json({ error: "Minimal deposit 200.000" });
-    }
 
     const sign = crypto
       .createHash("md5")
@@ -387,12 +384,16 @@ app.post("/deposit", async (req, res) => {
 
     res.json(response.data);
 
-  } catch (error) {
-    res.json({
-      error: error.response?.data || error.message
-    });
-  }
-});
+  catch (error) {
+    const digi = error.response?.data?.data;
+    
+    return res.json({
+    success: false,
+    rc: digi?.rc || "XX",
+    message: digi?.message || error.message,
+    deposit: digi?.deposit || 0
+  });
+}
 
 /*===========================
 =======================*/
