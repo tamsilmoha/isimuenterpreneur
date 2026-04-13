@@ -355,27 +355,39 @@ deposit
 =========================*/
 app.post("/deposit", async (req, res) => {
   try {
+    const { amount, bank, owner_name } = req.body;
 
-  const response = await axios.post(
-    "https://api.digiflazz.com/v1/deposit",
-    {
-      username: process.env.DIGI_USERNAME,
-      amount: Number(amount),
-      Bank: bank,
-      owner_name: owner_name,
-      sign
+    if (!amount || !bank || !owner_name) {
+      return res.json({ error: "amount, bank, owner_name wajib" });
     }
-  );
 
-  return res.json(response.data);
+    const sign = crypto
+      .createHash("md5")
+      .update(
+        process.env.DIGI_USERNAME +
+        process.env.DIGI_API_KEY +
+        "deposit"
+      )
+      .digest("hex");
 
-} catch (error) {
+    const response = await axios.post(
+      "https://api.digiflazz.com/v1/deposit",
+      {
+        username: process.env.DIGI_USERNAME,
+        amount: Number(amount),
+        Bank: bank,
+        owner_name: owner_name,
+        sign
+      }
+    );
 
-  return res.json({
-    error: error.response?.data || error.message
-  });
+    res.json(response.data);
 
-}
+  } catch (error) {
+    res.json({
+      error: error.response?.data || error.message
+    });
+  }
 });
 
 /*===========================
