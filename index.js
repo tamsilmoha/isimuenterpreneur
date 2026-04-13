@@ -319,6 +319,71 @@ setInterval(async () => {
   } catch (err) {}
 }, 10000); // tiap 10 detik
 
+/*====================
+saldo digi
+=====================*/
+
+app.get("/cek-saldo", async (req, res) => {
+  try {
+    const sign = crypto
+      .createHash("md5")
+      .update(
+        process.env.DIGI_USERNAME +
+        process.env.DIGI_API_KEY +
+        "depo"
+      )
+      .digest("hex");
+
+    const response = await axios.post(
+      "https://api.digiflazz.com/v1/cek-saldo",
+      {
+        cmd: "deposit",
+        username: process.env.DIGI_USERNAME,
+        sign: sign
+      }
+    );
+
+    res.json(response.data);
+
+  } catch (error) {
+    res.json({ error: error.message });
+  }
+});
+
+/*===========================
+deposit
+=========================*/
+app.post("/deposit", async (req, res) => {
+  try {
+    const { amount, bank, owner_name } = req.body;
+
+    const sign = crypto
+      .createHash("md5")
+      .update(
+        process.env.DIGI_USERNAME +
+        process.env.DIGI_API_KEY +
+        "deposit"
+      )
+      .digest("hex");
+
+    const response = await axios.post(
+      "https://api.digiflazz.com/v1/deposit",
+      {
+        username: process.env.DIGI_USERNAME,
+        amount,
+        bank,
+        owner_name,
+        sign
+      }
+    );
+
+    res.json(response.data);
+
+  } catch (error) {
+    res.json({ error: error.message });
+  }
+});
+
 /* =========================
    START SERVER
 ========================= */
