@@ -359,6 +359,10 @@ app.post("/deposit", async (req, res) => {
 
     if (!amount || !bank || !owner_name) {
       return res.json({ error: "amount, bank, owner_name wajib" });
+        
+    }
+    if (amount < 200000) {
+      return res.json({ error: "Minimal deposit 200.000" });
     }
 
     const sign = crypto
